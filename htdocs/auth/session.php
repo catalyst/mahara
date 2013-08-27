@@ -10,40 +10,26 @@
  */
 
 defined('INTERNAL') || die();
-
 //
 // Set session settings
 //
 session_name(get_config('cookieprefix') . 'mahara');
-ini_set('session.save_path', '3;' . get_config('dataroot') . 'sessions');
-ini_set('session.gc_divisor', 1000);
-ini_set('session.gc_maxlifetime', get_config('session_timeout'));
+ini_set('session.save_handler','memcache');
+ini_set('session.save_path', $CFG->memcacheservers);
+//The default value for 'session_timeout' is 86400.
+//When multiplied by 60 comes to 5184000. This large
+//figure causes the session invalidate used to set
+//the gc parameter when memcache is the handler. (why?)
+//ini_set('session.gc_maxlifetime', get_config('session_timeout') * 60);
+//We set the session cookie time to the default mahara settings instead.
+session_set_cookie_params( get_config('session_timeout') * 60);
 ini_set('session.use_only_cookies', true);
-if ($domain = get_config('cookiedomain')) {
-    ini_set('session.cookie_domain', $domain);
-}
 ini_set('session.cookie_path', get_mahara_install_subdirectory());
 ini_set('session.cookie_httponly', 1);
 ini_set('session.hash_bits_per_character', 4);
 ini_set('session.hash_function', 0);
 if (is_https()) {
     ini_set('session.cookie_secure', true);
-}
-
-// Attempt to create session directories
-$sessionpath = get_config('dataroot') . 'sessions';
-if (!is_dir("$sessionpath/0")) {
-    // Create three levels of directories, named 0-9, a-f
-    $characters = array('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f');
-    foreach ($characters as $c1) {
-        check_dir_exists("$sessionpath/$c1");
-        foreach ($characters as $c2) {
-            check_dir_exists("$sessionpath/$c1/$c2");
-            foreach ($characters as $c3) {
-                check_dir_exists("$sessionpath/$c1/$c2/$c3");
-            }
-        }
-    }
 }
 
 /**
@@ -263,9 +249,7 @@ function insert_messages() {
  */
 function remove_user_sessions($userid) {
     global $sessionpath, $USER, $SESSION;
-
     $sessionids = get_column('usr_session', 'session', 'usr', (int) $userid);
-
     if (empty($sessionids)) {
         return;
     }
@@ -286,14 +270,6 @@ function remove_user_sessions($userid) {
         if ($sessionid == $sid) {
             continue;
         }
-        $file = $sessionpath;
-        for ($i = 0; $i < 3; $i++) {
-            $file .= '/' . substr($sessionid, $i, 1);
-        }
-        $file .= '/sess_' . $sessionid;
-        if (file_exists($file)) {
-            $alive[] = $sessionid;
-        }
         else {
             $dead[] = $sessionid;
         }
@@ -301,28 +277,16 @@ function remove_user_sessions($userid) {
 
     if (!empty($dead)) {
         delete_records_select('usr_session', 'session IN (' . join(',', array_map('db_quote', $dead)) . ')');
-    }
-
-    if (empty($alive)) {
-        return;
-    }
-
-    session_commit();
-
-    foreach ($alive as $sessionid) {
+       foreach ($alive as $sessionid) {
         session_id($sessionid);
-        if (session_start()) {
+           if (session_start()) {
             session_destroy();
             session_commit();
         }
     }
-
-    if ($sid !== false) {
         session_id($sid);
         session_start();
-    }
-
-    delete_records_select('usr_session', 'session IN (' . join(',', array_map('db_quote', $alive)) . ')');
+  }
 }
 
 /**
@@ -330,16 +294,6 @@ function remove_user_sessions($userid) {
  */
 function remove_all_sessions() {
     global $sessionpath, $USER;
-
     $sid = $USER->get('sessionid');
-
-    $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($sessionpath));
-    foreach ($iterator as $path) {
-        if ($path->isFile() && $path->getFilename() !== ('sess_' . $sid)) {
-            @unlink($path->getPathname());
-        }
-    }
-    clearstatcache();
-
     delete_records_select('usr_session', 'session != ?', array($sid));
 }
