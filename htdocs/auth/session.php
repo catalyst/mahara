@@ -10,20 +10,25 @@
  */
 
 defined('INTERNAL') || die();
+
 //
 // Set session settings
 //
 session_name(get_config('cookieprefix') . 'mahara');
 ini_set('session.save_handler','memcache');
 ini_set('session.save_path', $CFG->memcacheservers);
-//The default value for 'session_timeout' is 86400.
-//When multiplied by 60 comes to 5184000. This large
-//figure causes the session invalidate used to set
-//the gc parameter when memcache is the handler. (why?)
-//ini_set('session.gc_maxlifetime', get_config('session_timeout') * 60);
-//We set the session cookie time to the default mahara settings instead.
-session_set_cookie_params( get_config('session_timeout') * 60);
+ini_set('session.gc_divisor', 1000);
+// Session timeout is stored in minutes in the database
+// memcache's maximum allowed value for session.gc_maxlifetime is 60*60*24*30
+$gc_maxlifetime = min(
+        get_config('session_timeout') * 60,
+        60 * 60 * 24 * 30
+);
+ini_set('session.gc_maxlifetime', $gc_maxlifetime);
 ini_set('session.use_only_cookies', true);
+if ($domain = get_config('cookiedomain')) {
+    ini_set('session.cookie_domain', $domain);
+}
 ini_set('session.cookie_path', get_mahara_install_subdirectory());
 ini_set('session.cookie_httponly', 1);
 ini_set('session.hash_bits_per_character', 4);
@@ -277,15 +282,15 @@ function remove_user_sessions($userid) {
 
     if (!empty($dead)) {
         delete_records_select('usr_session', 'session IN (' . join(',', array_map('db_quote', $dead)) . ')');
-       foreach ($alive as $sessionid) {
+       foreach ($dead as $sessionid) {
         session_id($sessionid);
-           if (session_start()) {
+           if (@session_start()) {
             session_destroy();
             session_commit();
         }
     }
-        session_id($sid);
-        session_start();
+    session_id($sid);
+    session_start();
   }
 }
 
