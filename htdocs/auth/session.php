@@ -19,9 +19,9 @@ ini_set('session.save_handler','memcache');
 ini_set('session.save_path', $CFG->memcacheservers);
 ini_set('session.gc_divisor', 1000);
 // Session timeout is stored in minutes in the database
-// memcache's maximum allowed value for session.gc_maxlifetime is 60*60*24*30
+// memcache's maximum allowed value for session.gc_maxlifetime is 60*60*24*30 (30 days)
 $gc_maxlifetime = min(
-        get_config('session_timeout') * 60,
+        get_config('session_timeout'),
         60 * 60 * 24 * 30
 );
 ini_set('session.gc_maxlifetime', $gc_maxlifetime);
